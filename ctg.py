@@ -9,6 +9,10 @@ from mesh import UniformMesh
 # min time cost
 def cost_fn(state):
     state = np.copy(state)
+    # state[0] : 0 to 2*pi
+    # state[1] : -pi to pi
+    # state[2] : -max_vel to max_vel
+    # state[3] : -max_vel to max_vel
     state[0] -= pi
     if state.dot(state) < .001:
         return 0
@@ -60,8 +64,6 @@ class CTGProcess(Process):
                 while self.result_queue.qsize() > 0:
                     time.sleep(.1)
             else:
-                #if self.idx == 0:
-                #    print(f"start max {np.max(new_ctg)}")
                 start, block_size = args
                 one_step_ctg(start, block_size, self.mesh, self.transition_matrix, new_ctg)
 
@@ -103,17 +105,11 @@ class CTGPool(object):
         args = [(i, self.block_size) for i in range(0, len(self.points), self.block_size)]
         args.extend([None] * len(self.pool))
         [self.work_queue.put(arg) for arg in args]
+        while True:
+            time.sleep(.1)
+            active = sum([rqueue.empty() for rqueue in self.result_queue])
+            if not active:
+                break
         [rqueue.get() for rqueue in self.result_queue]
         return 1 - self.pool[0].active
-
-        #got = []
-        #for i in range(len(self.pool)):
-        #    print(f"waiting for {i}")
-        #    got.append(self.result_queue.get())
-        #    got.sort()
-        #    print(got)
-        #    print(len(got))
-
-        #[self.result_queue.get() for _ in self.pool]
-        #print("what")
 

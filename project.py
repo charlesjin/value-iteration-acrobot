@@ -13,16 +13,16 @@ from sim import sim
 
 env = gym.make("gym_underactuated:CustomAcrobot-v0")
 
-resolution = 2*5
+resolution = 2*20
 err_tol = .001
 retrain = False
-block_size = 64 #512 * 8
+block_size = 512 * 8
 
 NUM_PROCS = mp.cpu_count() - 2 or 1
 
 # create state space
-LOWERS = np.array([   0,    0, -env.MAX_VEL_1, -env.MAX_VEL_2])
-UPPERS = np.array([2*pi, 2*pi,  env.MAX_VEL_1,  env.MAX_VEL_2])
+LOWERS = np.array([   0, -pi, -env.MAX_VEL_1, -env.MAX_VEL_2])
+UPPERS = np.array([2*pi,  pi,  env.MAX_VEL_1,  env.MAX_VEL_2])
 STEPS  = np.array([resolution]*4)
 state_space = UniformMesh(LOWERS, UPPERS, STEPS, data_dims=2)
 

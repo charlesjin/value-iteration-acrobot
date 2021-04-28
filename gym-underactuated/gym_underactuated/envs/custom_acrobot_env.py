@@ -87,7 +87,7 @@ class CustomAcrobotEnv(classic_control.AcrobotEnv):
         # _dsdt
         s_augmented = np.append(s, torque)
         s_augmented[0] = wrap(s_augmented[0], 0, 2*pi)
-        s_augmented[1] = wrap(s_augmented[1], 0, 2*pi)
+        s_augmented[1] = wrap(s_augmented[1], -pi, pi)
 
         integrator = integrate.RK45(self._dsdt, 0, s_augmented, self.dt)
         while not integrator.status == 'finished':
@@ -107,7 +107,7 @@ class CustomAcrobotEnv(classic_control.AcrobotEnv):
         #ns[0] = wrap(ns[0], -pi, pi)
         #ns[1] = wrap(ns[1], -pi, pi)
         ns[0] = wrap(ns[0], 0, 2*pi)
-        ns[1] = wrap(ns[1], 0, 2*pi)
+        ns[1] = wrap(ns[1], -pi, pi)
         ns[2] = bound(ns[2], -self.MAX_VEL_1, self.MAX_VEL_1)
         ns[3] = bound(ns[3], -self.MAX_VEL_2, self.MAX_VEL_2)
         self.state = ns
