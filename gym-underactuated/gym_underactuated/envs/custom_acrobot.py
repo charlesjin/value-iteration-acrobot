@@ -21,10 +21,10 @@ class CustomAcrobotEnv(classic_control.AcrobotEnv):
 
     metadata = {
         'render.modes': ['human', 'rgb_array'],
-        'video.frames_per_second' : 15
+        'video.frames_per_second' : 50
     }
 
-    dt = .2
+    dt = .02
 
     # trying to match
     # https://github.com/RobotLocomotion/drake/blob/master/examples/acrobot/Acrobot.urdf
@@ -39,11 +39,11 @@ class CustomAcrobotEnv(classic_control.AcrobotEnv):
 
     DAMPING = .1  # damping for both joints
 
-    MAX_VEL_1 = 9 * pi
-    MAX_VEL_2 = 9 * pi
+    MAX_VEL_1 = 10 
+    MAX_VEL_2 = 10 
 
     #AVAIL_TORQUE = [-1., 0., +1]
-    TORQUE_LIMIT = 10.
+    TORQUE_LIMIT = 5
 
     torque_noise_max = 0.
 
@@ -65,6 +65,10 @@ class CustomAcrobotEnv(classic_control.AcrobotEnv):
         #self.action_space = spaces.Discrete(3)
 
         self.state = None
+        self.sim_states = [(0, 0, 0, 0), 
+                           (pi, 0, 0, 0), 
+                           (pi / 2., 0, 0 ,0), 
+                           (1, 0, 0, 0)]
         self.seed()
 
     def seed(self, seed=None):
@@ -148,6 +152,8 @@ class CustomAcrobotEnv(classic_control.AcrobotEnv):
         d1 = m1 * lc1 ** 2 + m2 * \
             (l1 ** 2 + lc2 ** 2 + 2 * l1 * lc2 * cos(theta2)) + I1 + I2
         d2 = m2 * (lc2 ** 2 + l1 * lc2 * cos(theta2)) + I2
+        damp1 = -d * dtheta1
+        damp2 = -d * dtheta2
         phi2 = m2 * lc2 * g * cos(theta1 + theta2 - pi / 2.)
         phi1 = - m2 * l1 * lc2 * dtheta2 ** 2 * sin(theta2) \
                - 2 * m2 * l1 * lc2 * dtheta2 * dtheta1 * sin(theta2)  \
@@ -162,15 +168,17 @@ class CustomAcrobotEnv(classic_control.AcrobotEnv):
             # book
             ddtheta2 = (a + d2 / d1 * phi1 - m2 * l1 * lc2 * dtheta1 ** 2 * sin(theta2) - phi2) \
                 / (m2 * lc2 ** 2 + I2 - d2 ** 2 / d1)
-        ddtheta1 = -(d2 * ddtheta2 + phi1) / d1
+        ddtheta2 -= d * dtheta2
+        ddtheta1 = -(d2 * ddtheta2 + phi1 + damp1) / d1
+        ddtheta1 -= d * dtheta1
 
-        # add damping
-        ddtheta1 += -d * dtheta1
-        ddtheta2 += -d * dtheta2
+        ## add damping
+        #ddtheta1 += -d * dtheta1
+        #ddtheta2 += -d * dtheta2
 
         return (dtheta1, dtheta2, ddtheta1, ddtheta2, 0.)
 
-    def render(self, mode=None):
+    def render(self, mode=None, action=None):
         s = self.state
         if s is None: return None
 
@@ -189,7 +197,7 @@ class CustomAcrobotEnv(classic_control.AcrobotEnv):
 
         # draw circles
         for p in [p0, p1, p2]:
-            view = cv2.circle(view, tuple([int(_p * scale) + 250 for _p in p0]),
+            view = cv2.circle(view, tuple([int(_p * scale) + 250 for _p in p]),
                               int(circle_rad * scale), 255, -1)
         # draw lines
         for l in [(p0, p1), (p1, p2)]:
@@ -197,7 +205,6 @@ class CustomAcrobotEnv(classic_control.AcrobotEnv):
                             tuple([int(_l * scale) + 250 for _l in l[0]]),
                             tuple([int(_l * scale) + 250 for _l in l[1]]),
                             128, int(line_thick * scale))
-
         return view
 
     def close(self):

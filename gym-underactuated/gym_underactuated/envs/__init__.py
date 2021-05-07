@@ -1,1 +1,4 @@
-from gym_underactuated.envs.custom_acrobot_env import CustomAcrobotEnv
+from gym_underactuated.envs.custom_acrobot import CustomAcrobotEnv
+from gym_underactuated.envs.custom_cartpole import CustomCartPoleEnv
+from gym_underactuated.envs.custom_pendulum import CustomPendulumEnv
+
