@@ -39,11 +39,11 @@ class CustomAcrobotEnv(classic_control.AcrobotEnv):
 
     DAMPING = .1  # damping for both joints
 
-    MAX_VEL_1 = 10 
+    MAX_VEL_1 = 5
     MAX_VEL_2 = 10 
 
     #AVAIL_TORQUE = [-1., 0., +1]
-    TORQUE_LIMIT = 5
+    TORQUE_LIMIT = 10
 
     torque_noise_max = 0.
 

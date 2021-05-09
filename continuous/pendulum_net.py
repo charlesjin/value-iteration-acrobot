@@ -72,7 +72,7 @@ class PendulumNet(ValueIterNet):
             o = s[0]
         elif goal == 'bottom':
             o = s[0] + cls.PI
-            o[o > self.PI] -= 2 * cls.PI
+            o[o > cls.PI] -= 2 * cls.PI
         else:
             assert False, "Cost model does not recognize goal {goal}."
 

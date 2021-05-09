@@ -81,7 +81,7 @@ class AcrobotNet(ValueIterNet):
         return torch.stack((dtheta1, dtheta2, ddtheta1, ddtheta2))
 
     @classmethod
-    def cost(cls, s, eps=.1, goal='bottom', obj='min_time'):
+    def cost(cls, s, eps=.1, goal='top', obj='min_time'):
         """
         computes the cost for a given goal and objective
 

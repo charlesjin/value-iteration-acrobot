@@ -20,9 +20,13 @@ class AnalyticValueIterNet(ValueIterNet):
         self.periodic = periodic
         self.a_max = a_max
 
-    def forward(self, J, dsdt, ddsdtda, cost_s, gamma=1):
+    def forward(self, J, dsdt, ddsdtda, cost_s, gamma=1, clip=10):
         up = self._get_grid_partials(J, self.periodic, direction='up')
         down = self._get_grid_partials(J, self.periodic, direction='down')
+
+        up = torch.clamp_(up, min=-clip, max=clip)
+        down = torch.clamp_(down, min=-clip, max=clip)
+        dsdt = torch.clamp(dsdt, max=clip, min=-clip)
         if self.R == 0:
             # bang-bang policy
             ddsdt_a = ddsdtda * self.a_max
@@ -49,21 +53,27 @@ class AnalyticValueIterNet(ValueIterNet):
         # then project a back onto feasible set (which depends on direction)
 
         dJds = self._get_grid_partials(J, self.periodic, direction='symmetric')
+        dJds = torch.clamp_(dJds, min=-clip, max=clip)
         a = -torch.sum(dJds * ddsdtda, dim=0) / 2 * self.R
         a = torch.clamp_(a, min=-self.a_max, max=self.a_max)
         a[cost_s < gamma * 1e-5] = 0
         dsdt += a * ddsdtda
 
+        dsdt[0][dsdt[0] > 0] %= (2*np.pi / .01)
+        dsdt[0][dsdt[0] < 0] %= (-2*np.pi / .01)
+        dsdt[1][dsdt[1] > 0] %= (2*np.pi / .01)
+        dsdt[1][dsdt[1] < 0] %= (-2*np.pi / .01)
+
         up_dsdt = torch.clamp(dsdt, min=0) 
         down_dsdt = torch.clamp(dsdt, max=0)
 
-        cost = torch.sum(up_dsdt * up + down_dsdt * down, dim=0)
-        cost *= gamma
-        cost += cost_s + self.R * a ** 2
-        cost[cost_s < gamma * 1e-5] = 0
+        dJdt = torch.sum(up_dsdt * up + down_dsdt * down, dim=0)
+        dJdt *= gamma
+        dJdt += cost_s + self.R * a ** 2
+        dJdt[cost_s < gamma * 1e-5] = 0
         a[cost_s < gamma * 1e-5] = 0
 
-        return cost, a
+        return dJdt, a
 
 
         #rho = -dsdt / ddsdtda
@@ -134,10 +144,18 @@ class AnalyticValueIter(ValueIter):
         return torch.max(torch.abs(a))
 
     def run(self, max_iter=1000000, err_tol=.001, use_cuda=True):
-        eps = .5
+        eps = .1
         with torch.no_grad():
             if self.dsdt is None:
                 self.dsdt, self.ddsdtda = self.net.dsdt_ddsdtda(self.s)
+                
+                #print(torch.max(self.dsdt))
+                #self.dsdt[0][self.dsdt[0] > 0] %= (2*np.pi / self.dt)
+                #self.dsdt[0][self.dsdt[0] < 0] %= (-2*np.pi / self.dt)
+                #self.dsdt[1][self.dsdt[1] > 0] %= (2*np.pi / self.dt)
+                #self.dsdt[1][self.dsdt[1] < 0] %= (-2*np.pi / self.dt)
+
+                print(torch.max(self.dsdt))
                 self.cost = self.net.cost_s(self.s, eps=eps) #/ 10
 
                 print(torch.sum(self.cost == 0).item())
@@ -147,7 +165,10 @@ class AnalyticValueIter(ValueIter):
             step_size = len(J)
             pbar = tqdm(range(max_iter))
             for it in pbar: 
-                gamma = .9
+                #clip = min(1000, 10 * (1 + it / 5000))
+                clip = 1000
+                #r = torch.rand(J.shape, device=J.device)
+                gamma = .1
                 dJdt = []
                 a = []
                 for start in range(0, len(J), step_size):
@@ -157,7 +178,8 @@ class AnalyticValueIter(ValueIter):
                                      self.dsdt[:,start:end], 
                                      self.ddsdtda[:,start:end], 
                                      self.cost[start:end],
-                                     gamma=gamma)
+                                     gamma=gamma,
+                                     clip=clip)
 
                     dJdt.append(_dJdt)
                     a.append(_a)
@@ -172,11 +194,14 @@ class AnalyticValueIter(ValueIter):
                 #if max_step < -1:
                 #    dJdt /= -max_step
 
-                dJdt_max = torch.max(torch.abs(dJdt))
+                #dJdt_max = torch.max(torch.abs(dJdt))
                 #dJdt[torch.abs(dJdt) < .0001 * dJdt_max] = 0
                 #dJdt[dJdt < .0001 * dJdt_max] = 0
-                if dJdt_max > 1:
-                    dJdt /= dJdt_max
+
+                #if dJdt_max > 1:
+                #    dJdt /= dJdt_max
+
+                dJdt = torch.clamp_(dJdt, max=1, min=-1)
 
                 #J = dJdt * self.dt + J * (1 - self.dt)
                 J += dJdt * self.dt
@@ -201,7 +226,7 @@ class AnalyticValueIter(ValueIter):
                 if J_err < err_tol:
                     break
 
-                if (it + 1) % 5000 == 0:
+                if (it + 1) % 1000000 == 0:
                     #eps = 1. / (1 + it / 100000)
                     #eps = max(eps, .001)
                     #self.cost = self.net.cost(self.s, eps)
@@ -211,7 +236,7 @@ class AnalyticValueIter(ValueIter):
                                J.to(host).detach().numpy())
                     #a = torch.cat(a, dim=0)
                     self.simulate(J=J, a=a, 
-                                  cost_fn=lambda x, u: type(self.net).cost_single(x, u, eps, self.net.R))
+                                  cost_fn=lambda x, u: type(self.net).cost_single(x, u, eps, 0)) #self.net.R))
 
         self.J = J.to(host).detach()
         #a = torch.cat(a, dim=0)
@@ -236,7 +261,7 @@ class AnalyticValueIter(ValueIter):
             self.state_space.data[1] = a
 
         if cost_fn is None:
-            cost_fn = lambda x, u: type(self.net).cost_single(x, u, .01, self.net.R)
+            cost_fn = lambda x, u: type(self.net).cost_single(x, u, .01, 0) #self.net.R)
 
         # simulate
         procs = []

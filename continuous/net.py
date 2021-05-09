@@ -23,34 +23,36 @@ class ValueIterNet(nn.Module):
                 N = J.shape[dim]
                 if dim in periodic: 
                     d0 = torch.narrow(J, dim, 1, 1) - torch.narrow(J, dim, -2, 1)
+                    d2 = d0
                 else:
-                    d0 = torch.zeros(torch.narrow(J, dim, 1, 1).shape).to(J.device)
+                    d0 = torch.narrow(J, dim, 1, 1) - torch.narrow(J, dim, 0, 1)
+                    d2 = torch.narrow(J, dim, -1, 1) - torch.narrow(J, dim, -2, 1)
                 d1 = torch.narrow(J, dim, 2, N-2) - torch.narrow(J, dim, 0, N-2)
-                out.append((torch.cat((d0, d1, d0), dim=dim) / 2 / self.step_sizes[dim]))
+                out.append((torch.cat((d0, d1, d2), dim=dim) / 2 / self.step_sizes[dim]))
             return torch.stack(out)
         elif direction == 'up':
             up = []
             for dim in range(len(J.shape)):
                 N = J.shape[dim]
+                d0 = torch.narrow(J, dim, 1, 1) - torch.narrow(J, dim, 0, 1)
                 if dim in periodic: 
-                    d0 = torch.narrow(J, dim, 1, 1) - torch.narrow(J, dim, -1, 1)
+                    d2 = d0
                 else:
-                    d0 = torch.zeros(torch.narrow(J, dim, 1, 1).shape).to(J.device)
-                #d0 = torch.narrow(J, dim, 1, 1) - torch.narrow(J, dim, -1, 1)
+                    d2 = torch.zeros(torch.narrow(J, dim, 1, 1).shape).to(J.device)
                 d1 = torch.narrow(J, dim, 2, N-2) - torch.narrow(J, dim, 1, N-2)
-                up.append((torch.cat((d0, d1, d0), dim=dim) / 2 / self.step_sizes[dim]))
+                up.append((torch.cat((d0, d1, d2), dim=dim) / 2 / self.step_sizes[dim]))
             return torch.stack(up)
         elif direction == 'down':
             down = []
             for dim in range(len(J.shape)):
                 N = J.shape[dim]
+                d2 = torch.narrow(J, dim, -1, 1) - torch.narrow(J, dim, -2, 1)
                 if dim in periodic: 
-                    d0 = torch.narrow(J, dim, 0, 1) - torch.narrow(J, dim, -2, 1)
+                    d0 = d2
                 else:
                     d0 = torch.zeros(torch.narrow(J, dim, 1, 1).shape).to(J.device)
-                #d0 = torch.narrow(J, dim, 0, 1) - torch.narrow(J, dim, -2, 1)
                 d1 = torch.narrow(J, dim, 1, N-2) - torch.narrow(J, dim, 0, N-2)
-                down.append((torch.cat((d0, d1, d0), dim=dim) / 2 / self.step_sizes[dim]))
+                down.append((torch.cat((d0, d1, d2), dim=dim) / 2 / self.step_sizes[dim]))
             return torch.stack(down)
         assert False
 
@@ -70,30 +72,68 @@ class ValueIterNet(nn.Module):
         if upwind is true, use an upwind differencing scheme
         """
 
+        #for dim in range(len(J.shape)):
+        #    borders = []
+        #    if dim in periodic: 
+        #        borders.append(torch.narrow(J, dim, -2, 1))
+        #        borders.append(torch.narrow(J, dim, 1, 1))
+        #    else:
+        #        borders.append(torch.narrow(J, dim, 0, 1))
+        #        borders.append(torch.narrow(J, dim, -1, 1))
+        #    J = torch.cat((borders[0], J, borders[1]), dim=dim)
+
         if order == 'first' and not upwind:
             out = self._get_grid_partials(J, periodic, direction='symmetric').unsqueeze(dim=-1)
+            #if torch.max(J) > 20:
+            #    print(J)
+            #    print(out.squeeze(dim=-1))
+            #    input()
             return out * dsdt
 
         elif order == 'first' and upwind:
             up = self._get_grid_partials(J, periodic, direction='up').unsqueeze(dim=-1)
             up_dsdt = torch.clamp(dsdt, min=0)
+            #print(J)
+            #print(up.squeeze(dim=-1))
+            #print(up_dsdt)
+            #print(up * up_dsdt)
+            #input()
             ret = up * up_dsdt
             del up
             del up_dsdt
 
             down = self._get_grid_partials(J, periodic, direction='down').unsqueeze(dim=-1)
             down_dsdt = torch.clamp(dsdt, max=0)
+            #print(J)
+            #print(down.squeeze(dim=-1))
+            #print(down_dsdt)
+            #print(down * down_dsdt)
+            #input()
             ret += down * down_dsdt
             return ret
 
         assert False, f"differencing scheme of order={order} with upwind={upwind} not implemented"
 
     def forward(self, J, dsdt, cost, gamma=1):
+        #if torch.max(J) > 20:
+        #    print(J)
+        #    input()
+        #    print(dsdt)
+        #    input()
+        #dJdt_a = self.get_grid_partials(J, dsdt, upwind=False)
+        #if torch.max(J) > 20:
+        #    print(dJdt_a)
+        #    input()
         dJdt_a = torch.sum(
                 self.get_grid_partials(J, dsdt, upwind=True), 
                 dim=0) * gamma \
             + cost
         dJdt, a = torch.min(dJdt_a, dim=-1)
+        #if torch.max(J) > 20:
+        #    print(dJdt_a)
+        #    print(dJdt)
+        #    print(a)
+        #    input()
         return dJdt, a
 
     @classmethod
@@ -132,7 +172,8 @@ class ValueIter(object):
 
         self.net = net(self.step_sizes, **net_kwargs)
         self.env = self.net.env
-        self.J = torch.rand(self.s.shape[1:-1])
+        #self.J = torch.rand(self.s.shape[1:-1])
+        self.J = torch.ones(self.s.shape[1:-1]) * 3
         self.a = None
 
         if use_cuda:
@@ -149,7 +190,7 @@ class ValueIter(object):
         steps = self.steps.numpy().astype(int)
         self.state_space = UniformMesh(lowers[:-1], uppers[:-1], steps[:-1],
                                        data_dims=2)
-        self.action_space = self.linspace(lowers[-1], uppers[-1], int(steps[-1]), 
+        self.action_space = self.linspace(lowers[-1], uppers[-1], 100, #int(steps[-1]), 
                 self.midpoints[-1])
 
     def linspace(self, l, u, s, midpoint=0):
@@ -180,27 +221,39 @@ class ValueIter(object):
     def err_fn(self, a):
         return torch.max(torch.abs(a))
 
-    def run(self, max_iter=1000000, err_tol=.001, use_cuda=True):
-        eps = .1
+    def run(self, max_iter=1000000, err_tol=.00001, use_cuda=True):
+        eps = .01
         with torch.no_grad():
             if self.dsdt is None:
                 self.dsdt = self.net.dsdt(self.s)
                 self.cost = self.net.cost(self.s, eps=eps) / 10
+
+
+                print(self.dsdt)
+                print(self.cost)
 
                 print(torch.sum(self.cost == 0).item())
                 #print(np.unravel_index(torch.argmin(self.cost + 0).cpu(), self.cost.shape))
                 #self.cost[tuple([int(s//2) for s in self.steps])] = 0
                 #self.dsdt[:,tuple([int(s//2) for s in self.steps])] = 0
 
-                self.J[torch.min(self.cost, dim=-1) == 0] = 0
+            fixed_points = torch.prod(self.cost, dim=-1) < 1e-6
+            self.J[fixed_points] = 0
 
             J = self.J
             a = 0 if self.a is None else self.a
             step_size = len(J)
             pbar = tqdm(range(max_iter))
+            #gamma = .000001
+            J_err = err_tol + 1
             for it in pbar: 
                 #tau = min(1, .00001 * (1+it))
-                gamma = .1
+                #gamma = min(1, .00001 * (1 + it))
+                #if J_err < err_tol:
+                #    gamma += .000001
+                #    gamma = min(1, gamma)
+                #    print(gamma)
+                gamma = 1
                 dJdt = []
                 a_new = []
                 for start in range(0, len(J), step_size):
@@ -214,6 +267,10 @@ class ValueIter(object):
                     dJdt.append(_dJdt)
                     a_new.append(_a)
                 dJdt = torch.cat(dJdt, dim=0)
+                #print(dJdt)
+                #input()
+
+                #assert (J[torch.prod(self.cost, dim=-1) == 0] == 0).all()
                 J_err = self.err_fn(dJdt)
 
                 #a_new = torch.cat(a_new, dim=0)
@@ -222,13 +279,18 @@ class ValueIter(object):
                 a = torch.cat(a_new, dim=0)
 
                 dJdt_max = torch.max(torch.abs(dJdt))
-                #dJdt[torch.abs(dJdt) < .0001 * dJdt_max] = 0
+                dJdt[torch.abs(dJdt) < .0001 * dJdt_max] = 0
                 #dJdt[dJdt < .0001 * dJdt_max] = 0
+                #print(dJdt[torch.prod(self.cost, dim=-1) == 0])
+                #assert (dJdt[torch.prod(self.cost, dim=-1) == 0] == 0).all()
                 if dJdt_max > 1:
                     dJdt /= dJdt_max
 
                 #J = dJdt * self.dt + J * (1 - self.dt)
+                #print(J)
                 J += dJdt * self.dt
+                #print(dJdt)
+                #print(J)
 
                 #J -= J[10,10,10,10].item()
 
@@ -240,15 +302,22 @@ class ValueIter(object):
                 #    #J[abs(J) > 50] = 50.
                 #    J = torch.clamp_(J, min=0, max=50)
 
-                J -= torch.min(J)
-                J[torch.min(self.cost, dim=-1) == 0] = 0
+                J -= J_min #torch.min(J)
+                J[fixed_points] = 0
+                #J[torch.min(self.cost, dim=-1) == 0] = 0
+                #print(J)
+                #input()
 
                 pbar.set_postfix_str(#f"a_err: {a_err:.3f}, "
                                      f"J_err: {J_err:.3f}, "
                                      f"J_min: {J_min:.3f}, "
                                      f"J_max: {J_max:.3f}")
-                if J_err < err_tol:
+                if J_err < err_tol and gamma == 1:
                     break
+
+                #if (it + 1) % 1000 == 0:
+                #    print(J)
+                #    input()
 
                 if (it + 1) % 10000 == 0:
                     #eps = 1. / (1 + it / 100000)
@@ -290,10 +359,10 @@ class ValueIter(object):
         # simulate
         procs = []
         for idx, start_state in enumerate(self.env.sim_states):
-            #p = sim(f"outputs/videos/output_J_{idx}", 
-            #        start_state, self.env, self.state_space, 
-            #        action_space=self.action_space, cost_fn=cost_fn)
-            #procs.append(p)
+            p = sim(f"outputs/videos/output_J_{idx}", 
+                    start_state, self.env, self.state_space, 
+                    action_space=self.action_space, cost_fn=cost_fn)
+            procs.append(p)
 
             if a is not None:
                 p = sim(f"outputs/videos/output_a_{idx}", 
