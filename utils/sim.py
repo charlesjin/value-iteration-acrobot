@@ -140,20 +140,20 @@ def _sim(fn, start_state, env, state_space, action_space, use_policy, cost_fn, p
                 #    a_idx = np.sum(a_idxs * weights)
                 #    #print(a_idx)
 
-                ctg = state_space.interpolate(np.array([cur_state]))[0]
-                low = int(a_idx)
-                d = a_idx - low
-                high = low + 1
+                #ctg = state_space.interpolate(np.array([cur_state]))[0]
+                #low = int(a_idx)
+                #d = a_idx - low
+                #high = low + 1
 
-                high = min(high, len(action_space)-1)
-                low = min(low, len(action_space)-1)
-                action = action_space[low] * (1 - d) + action_space[high] * d
+                #high = min(high, len(action_space)-1)
+                #low = min(low, len(action_space)-1)
+                #action = action_space[low] * (1 - d) + action_space[high] * d
                 # END
                 #####
 
                 ######
                 ## FOR ANALYTIC
-                #action = a_idx
+                action = a_idx
                 ## END
                 ######
 

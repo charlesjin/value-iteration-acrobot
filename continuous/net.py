@@ -319,7 +319,7 @@ class ValueIter(object):
                 #    print(J)
                 #    input()
 
-                if (it + 1) % 10000 == 0:
+                if (it + 1) % 100000 == 0:
                     #eps = 1. / (1 + it / 100000)
                     #eps = max(eps, .001)
                     #self.cost = self.net.cost(self.s, eps)

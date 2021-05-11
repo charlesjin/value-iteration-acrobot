@@ -51,10 +51,10 @@ def make_analytic_acrobot_vi(use_cuda=True):
         0,
         0,
         0])
-    steps = torch.Tensor([40, 40, 40, 40])
+    steps = torch.Tensor([20, 20, 20, 20])
     vi = AnalyticValueIter(A, .001, 
                    lowers, uppers, steps, midpoints, 
-                   use_cuda=use_cuda, periodic=[0,1], R=.1)
+                   use_cuda=use_cuda, periodic=[0,1], R=0) #R=.1)
     return vi
 
 def make_pendulum_vi(use_cuda=True):

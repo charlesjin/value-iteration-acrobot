@@ -57,15 +57,16 @@ class AnalyticValueIterNet(ValueIterNet):
         a = -torch.sum(dJds * ddsdtda, dim=0) / 2 * self.R
         a = torch.clamp_(a, min=-self.a_max, max=self.a_max)
         a[cost_s < gamma * 1e-5] = 0
-        dsdt += a * ddsdtda
+        dsdt_a = dsdt + a * ddsdtda
+        #dsdt += a * ddsdtda
 
-        dsdt[0][dsdt[0] > 0] %= (2*np.pi / .01)
-        dsdt[0][dsdt[0] < 0] %= (-2*np.pi / .01)
-        dsdt[1][dsdt[1] > 0] %= (2*np.pi / .01)
-        dsdt[1][dsdt[1] < 0] %= (-2*np.pi / .01)
+        #dsdt[0][dsdt[0] > 0] %= (2*np.pi / .01)
+        #dsdt[0][dsdt[0] < 0] %= (-2*np.pi / .01)
+        #dsdt[1][dsdt[1] > 0] %= (2*np.pi / .01)
+        #dsdt[1][dsdt[1] < 0] %= (-2*np.pi / .01)
 
-        up_dsdt = torch.clamp(dsdt, min=0) 
-        down_dsdt = torch.clamp(dsdt, max=0)
+        up_dsdt = torch.clamp(dsdt_a, min=0) 
+        down_dsdt = torch.clamp(dsdt_a, max=0)
 
         dJdt = torch.sum(up_dsdt * up + down_dsdt * down, dim=0)
         dJdt *= gamma
@@ -226,13 +227,13 @@ class AnalyticValueIter(ValueIter):
                 if J_err < err_tol:
                     break
 
-                if (it + 1) % 1000000 == 0:
+                if (it + 1) % 100000 == 0:
                     #eps = 1. / (1 + it / 100000)
                     #eps = max(eps, .001)
                     #self.cost = self.net.cost(self.s, eps)
                     #print(torch.sum(self.cost == 0).item())
 
-                    np.save(f"outputs/precompute/ctg", 
+                    np.save(f"outputs/precompute/analytic_ctg", 
                                J.to(host).detach().numpy())
                     #a = torch.cat(a, dim=0)
                     self.simulate(J=J, a=a, 
@@ -266,13 +267,13 @@ class AnalyticValueIter(ValueIter):
         # simulate
         procs = []
         for idx, start_state in enumerate(self.env.sim_states):
-            p = sim(f"outputs/videos/output_J_{idx}", 
+            p = sim(f"outputs/videos/left_analytic_output_J_{idx}", 
                     start_state, self.env, self.state_space, 
                     action_space=self.action_space, cost_fn=cost_fn)
             procs.append(p)
 
             if a is not None:
-                p = sim(f"outputs/videos/output_a_{idx}", 
+                p = sim(f"outputs/videos/left_analytic_output_a_{idx}", 
                         start_state, self.env, self.state_space, 
                         action_space=self.action_space, use_policy=True, 
                         cost_fn=cost_fn)
