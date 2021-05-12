@@ -123,6 +123,7 @@ def _sim(fn, start_state, env, state_space, action_space, use_policy, cost_fn, p
 
                 weights, a_idxs = weights[0], a_idxs[0]
                 a_idx = np.sum(a_idxs * weights)
+                ctg = state_space.interpolate(np.array([cur_state]))[0]
 
                 #####
                 # FOR NON ANALYTIC
@@ -159,9 +160,46 @@ def _sim(fn, start_state, env, state_space, action_space, use_policy, cost_fn, p
 
                 env.step(action, cur_state)
             elif policy_fn is not None:
+                delta = .01
+                u0 = d0 = u1 = d1 = u2 = d2 = u3 = d3 = cur_state
+                u0[0] += delta
+                d0[0] -= delta
+                u1[1] += delta
+                d1[1] -= delta
+                u2[2] += delta
+                u2[2] -= delta
+                u3[3] += delta
+                u3[3] -= delta
+                states = [cur_state, u0, d0, u1, d1, u2, d2, u3, d3]
+
                 weights, Js = \
-                        state_space.interpolate(np.array([cur_state]), 
+                        state_space.interpolate(np.array([states]), 
                                                 data_dim=0, dot=False)
+                J, Js = Js[0], Js[1:]
+
+                local_J = torch.zeros([3,3,3,3])
+                local_J[1,1,1,1] = J
+
+                Js = (Js - J) / delta
+                Js[0:2] *= state_space.step_sizes[0]
+                Js[2:4] *= state_space.step_sizes[1]
+                Js[4:6] *= state_space.step_sizes[2]
+                Js[6:8] *= state_space.step_sizes[3]
+                Js += J
+                
+                local_J[2,1,1,1] = Js[0]
+                local_J[0,1,1,1] = Js[1]
+                local_J[1,2,1,1] = Js[2]
+                local_J[1,0,1,1] = Js[3]
+                local_J[1,1,2,1] = Js[4]
+                local_J[1,1,0,1] = Js[5]
+                local_J[1,1,1,2] = Js[6]
+                local_J[1,1,1,0] = Js[7]
+
+                action = policy_fn(local_J, cur_state)
+                ctg = J
+                env.state = env.step(action, cur_state)
+
             else:
                 assert action_space is not None
 

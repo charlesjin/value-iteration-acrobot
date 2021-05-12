@@ -5,6 +5,7 @@ class UniformMesh(object):
         self.uppers = uppers
         self.lowers = lowers
         self.steps = steps
+        self.step_sizes = (uppers - lowers) / steps
         self.data_dims = data_dims
 
         if data_init is not None:

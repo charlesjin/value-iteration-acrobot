@@ -104,7 +104,9 @@ class AnalyticAcrobotNet(AcrobotNet, AnalyticValueIterNet):
         vel = torch.sum(r*r, dim=0)
 
         if obj == 'min_time':
-            c = (pos > eps / 10) | (vel > eps)
+            c = ((pos > eps / 10) | (vel > eps)).to(torch.uint8)
+            #c += (r[0] > 5).to(torch.uint8)
+            #c += (r[1] > 10).to(torch.uint8)
             return c
         elif obj == 'lqr':
             return pos + vel

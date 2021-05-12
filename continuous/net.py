@@ -173,7 +173,8 @@ class ValueIter(object):
         self.net = net(self.step_sizes, **net_kwargs)
         self.env = self.net.env
         #self.J = torch.rand(self.s.shape[1:-1])
-        self.J = torch.ones(self.s.shape[1:-1]) * 3
+        #self.J = torch.ones(self.s.shape[1:-1]) * 3
+        self.J = torch.zeros(self.s.shape[1:-1])
         self.a = None
 
         if use_cuda:
@@ -319,7 +320,7 @@ class ValueIter(object):
                 #    print(J)
                 #    input()
 
-                if (it + 1) % 100000 == 0:
+                if (it + 1) % 10000 == 0:
                     #eps = 1. / (1 + it / 100000)
                     #eps = max(eps, .001)
                     #self.cost = self.net.cost(self.s, eps)

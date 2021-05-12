@@ -20,13 +20,14 @@ class AnalyticValueIterNet(ValueIterNet):
         self.periodic = periodic
         self.a_max = a_max
 
-    def forward(self, J, dsdt, ddsdtda, cost_s, gamma=1, clip=10):
+    def forward(self, J, dsdt, ddsdtda, cost_s, gamma=1, clip=0):
         up = self._get_grid_partials(J, self.periodic, direction='up')
         down = self._get_grid_partials(J, self.periodic, direction='down')
 
-        up = torch.clamp_(up, min=-clip, max=clip)
-        down = torch.clamp_(down, min=-clip, max=clip)
-        dsdt = torch.clamp(dsdt, max=clip, min=-clip)
+        if clip > 0:
+            up = torch.clamp_(up, min=-clip, max=clip)
+            down = torch.clamp_(down, min=-clip, max=clip)
+            dsdt = torch.clamp(dsdt, min=-clip, max=clip)
         if self.R == 0:
             # bang-bang policy
             ddsdt_a = ddsdtda * self.a_max
@@ -46,15 +47,17 @@ class AnalyticValueIterNet(ValueIterNet):
             a[cost_s < gamma * 1e-5] = 0
             return dJdt, a
 
-        # RHS = (ds/dt + a * d^2s/dtda) * dJ/dx + cost_s + R * a^2
+        # -dJdt = min_a { (ds/dt + a * d^2s/dtda) * dJ/dx + cost_s + R * a^2 }
         # to minimize wrt a, we take the derivative wrt a and set it equal to 0
         # 0 = d^2s/dtda * dJ/dx + 2R * a
         # since R > 0, solving for a gives the global minimum
-        # then project a back onto feasible set (which depends on direction)
+        # use the symmetric partials to solve for a
+        # then the upwind difference to compute dJdt given a
 
         dJds = self._get_grid_partials(J, self.periodic, direction='symmetric')
-        dJds = torch.clamp_(dJds, min=-clip, max=clip)
-        a = -torch.sum(dJds * ddsdtda, dim=0) / 2 * self.R
+        if clip > 0:
+            dJds = torch.clamp_(dJds, min=-clip, max=clip)
+        a = -torch.sum(dJds * ddsdtda, dim=0) / 2 / self.R
         a = torch.clamp_(a, min=-self.a_max, max=self.a_max)
         a[cost_s < gamma * 1e-5] = 0
         dsdt_a = dsdt + a * ddsdtda
@@ -124,13 +127,22 @@ class AnalyticValueIterNet(ValueIterNet):
             s = torch.unsqueeze(s, dim=-1)
         return cls.cost_s(s, eps).item() + R * u ** 2 
 
+    def action_single(self, J, state, eps, gamma, clip=0):
+        states = torch.zeros((len(J.shape), *J.shape), device=J.device)
+        states[:] = state
+        dsdt, ddsdtda = self.dsdt_ddsdtda(states)
+        cost_s = self.cost_s(states, eps)
+        
+        dJdt, a = self.forward(J, dsdt, ddsdtda, cost_s, gamma, clip)
+        return dJdt, a
+
 class AnalyticValueIter(ValueIter):
     def __init__(self, net, dt, lowers, uppers, steps, midpoints, use_cuda=True, 
             **net_kwargs):
         super().__init__(net, dt, 
                 lowers, uppers, steps, midpoints, use_cuda, **net_kwargs)
 
-        self.J = torch.rand(self.s.shape[1:]).to(self.J.device)
+        self.J = torch.zeros(self.s.shape[1:]).to(self.J.device)
         self.ddsdtda = None
 
         # for simulating
@@ -167,7 +179,7 @@ class AnalyticValueIter(ValueIter):
             pbar = tqdm(range(max_iter))
             for it in pbar: 
                 #clip = min(1000, 10 * (1 + it / 5000))
-                clip = 1000
+                clip = 0
                 #r = torch.rand(J.shape, device=J.device)
                 gamma = .1
                 dJdt = []
@@ -233,17 +245,20 @@ class AnalyticValueIter(ValueIter):
                     #self.cost = self.net.cost(self.s, eps)
                     #print(torch.sum(self.cost == 0).item())
 
+
+                    cost_fn = lambda x, u: type(self.net).cost_single(x, u, eps, 0)) #self.net.R))
+                    policy_fn = lambda J, s: self.net.action_single(J, s, eps, gamma)
+
                     np.save(f"outputs/precompute/analytic_ctg", 
                                J.to(host).detach().numpy())
                     #a = torch.cat(a, dim=0)
-                    self.simulate(J=J, a=a, 
-                                  cost_fn=lambda x, u: type(self.net).cost_single(x, u, eps, 0)) #self.net.R))
+                    self.simulate(J=J, a=a, cost_fn=cost_fn, policy_fn=policy_fn)
 
         self.J = J.to(host).detach()
         #a = torch.cat(a, dim=0)
         self.a = a.to(host).detach()
 
-    def simulate(self, J=None, a=None, cost_fn=None):
+    def simulate(self, J=None, a=None, cost_fn=None, policy_fn=None):
         if J is None:
             J = self.J
         try:
@@ -264,16 +279,20 @@ class AnalyticValueIter(ValueIter):
         if cost_fn is None:
             cost_fn = lambda x, u: type(self.net).cost_single(x, u, .01, 0) #self.net.R)
 
+        if policy_fn is None:
+            policy_fn = lambda J, s: self.net.action_single(J, s, .01, 1)
+
         # simulate
         procs = []
         for idx, start_state in enumerate(self.env.sim_states):
-            p = sim(f"outputs/videos/left_analytic_output_J_{idx}", 
+            p = sim(f"outputs/videos/top_analytic_output_J_{idx}", 
                     start_state, self.env, self.state_space, 
-                    action_space=self.action_space, cost_fn=cost_fn)
+                    action_space=self.action_space, cost_fn=cost_fn,
+                    policy_fn=policy_fn)
             procs.append(p)
 
             if a is not None:
-                p = sim(f"outputs/videos/left_analytic_output_a_{idx}", 
+                p = sim(f"outputs/videos/top_analytic_output_a_{idx}", 
                         start_state, self.env, self.state_space, 
                         action_space=self.action_space, use_policy=True, 
                         cost_fn=cost_fn)
