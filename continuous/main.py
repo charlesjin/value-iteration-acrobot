@@ -1,5 +1,6 @@
 from tqdm import tqdm
 import torch
+import numpy as np
 
 from continuous.acrobot_net import AcrobotNet
 from continuous.pendulum_net import PendulumNet
@@ -51,10 +52,10 @@ def make_analytic_acrobot_vi(use_cuda=True):
         0,
         0,
         0])
-    steps = torch.Tensor([80, 80, 80, 80])
+    steps = torch.Tensor([40, 40, 40, 40])
     vi = AnalyticValueIter(A, .01, 
                    lowers, uppers, steps, midpoints, 
-                   use_cuda=use_cuda, periodic=[0,1], R=0) #R=.001)
+                   use_cuda=use_cuda, periodic=[0,1], R=0) #R=.005)
     return vi
 
 def make_pendulum_vi(use_cuda=True):
@@ -86,6 +87,7 @@ if __name__ == "__main__":
     #vi.run()
     #vi.simulate()
 
+    #J = np.load(f"outputs/precompute/top_analytic_ctg.npy")
     vi = make_analytic_acrobot_vi()
     vi.run()
     vi.simulate()

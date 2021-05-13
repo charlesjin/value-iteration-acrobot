@@ -82,11 +82,14 @@ def add_zero_text(env, view, state, time):
 
     return view
 
-def _sim(fn, start_state, env, state_space, action_space, use_policy, cost_fn, policy_fn):
+def _sim(fn, start_state, env, state_space, action_space, use_policy, 
+         cost_fn, policy_fn, mesh_fn):
     if state_space is not None:
         assert action_space is not None
     if use_policy:
         assert state_space.data_dims > 1
+
+    #env.dt = .00001
 
     fps = int (1 / env.dt)
     skip_frames = fps // 30 + 1
@@ -160,46 +163,70 @@ def _sim(fn, start_state, env, state_space, action_space, use_policy, cost_fn, p
 
                 env.step(action, cur_state)
             elif policy_fn is not None:
-                delta = .01
-                u0 = d0 = u1 = d1 = u2 = d2 = u3 = d3 = cur_state
-                u0[0] += delta
-                d0[0] -= delta
-                u1[1] += delta
-                d1[1] -= delta
-                u2[2] += delta
-                u2[2] -= delta
-                u3[3] += delta
-                u3[3] -= delta
-                states = [cur_state, u0, d0, u1, d1, u2, d2, u3, d3]
+                #delta = .01
+                ##u0, d0, u1, d1, u2, d2, u3, d3, cur_state = [np.array(cur_state, dtype=float) for _ in range(9)]
+                ##u0[0] += delta
+                ##d0[0] -= delta
+                ##u1[1] += delta
+                ##d1[1] -= delta
+                ##u2[2] += delta
+                ##d2[2] -= delta
+                ##u3[3] += delta
+                ##d3[3] -= delta
+                ##states = np.array([cur_state, u0, d0, u1, d1, u2, d2, u3, d3])
 
-                weights, Js = \
-                        state_space.interpolate(np.array([states]), 
-                                                data_dim=0, dot=False)
-                J, Js = Js[0], Js[1:]
+                #states = mesh_fn(cur_state)
+                #Js = state_space.interpolate(states, data_dim=0)
+                #J, Js = Js[0], Js[1:]
 
-                local_J = torch.zeros([3,3,3,3])
-                local_J[1,1,1,1] = J
+                #local_J = np.zeros([3,3,3,3])
+                #local_J[1,1,1,1] = J
 
-                Js = (Js - J) / delta
-                Js[0:2] *= state_space.step_sizes[0]
-                Js[2:4] *= state_space.step_sizes[1]
-                Js[4:6] *= state_space.step_sizes[2]
-                Js[6:8] *= state_space.step_sizes[3]
-                Js += J
-                
-                local_J[2,1,1,1] = Js[0]
-                local_J[0,1,1,1] = Js[1]
-                local_J[1,2,1,1] = Js[2]
-                local_J[1,0,1,1] = Js[3]
-                local_J[1,1,2,1] = Js[4]
-                local_J[1,1,0,1] = Js[5]
-                local_J[1,1,1,2] = Js[6]
-                local_J[1,1,1,0] = Js[7]
+                #Js = (Js - J) / delta
+                #Js[0:2] *= state_space.step_sizes[0]
+                #Js[2:4] *= state_space.step_sizes[1]
+                #Js[4:6] *= state_space.step_sizes[2]
+                #Js[6:8] *= state_space.step_sizes[3]
+                #Js += J
+                #
+                #local_J[2,1,1,1] = Js[0]
+                #local_J[0,1,1,1] = Js[1]
+                #local_J[1,2,1,1] = Js[2]
+                #local_J[1,0,1,1] = Js[3]
+                #local_J[1,1,2,1] = Js[4]
+                #local_J[1,1,0,1] = Js[5]
+                #local_J[1,1,1,2] = Js[6]
+                #local_J[1,1,1,0] = Js[7]
 
-                action = policy_fn(local_J, cur_state)
-                ctg = J
-                env.state = env.step(action, cur_state)
+                #dJdt, action = policy_fn(local_J, cur_state)
+                dJdt, action = policy_fn(cur_state, 
+                        lambda x: state_space.interpolate(x, data_dim=0))
+                J = state_space.interpolate(np.array([cur_state]))[0]
+                ctg = J - dJdt * env.dt
+                env.step(action, tuple(cur_state))
 
+                #last_action = action
+                #mult = 1
+                #state = tuple(cur_state)
+                #mu = .9
+                #steps = 10
+                #for _ in range(steps):
+                #    env.step(action, state)
+                #    state = env.state
+                #    # Nesterov-inspired step
+                #    next_dJdt, next_action = policy_fn(state, 
+                #            lambda x: state_space.interpolate(x, data_dim=0))
+                #    if next_dJdt * dJdt < 0:
+                #        mult *= (1 - mu)
+                #        #action = action - mult * last_action + mult * next_action
+                #        action = action * mu + next_action * (1 - mu)
+                #        #last_action = next_action
+                #        #dJdt = next_dJdt
+                #    else:
+                #        break
+                #    #action = mu * action + (1 - mu) * next_action
+                #ctg = J
+                #env.step(action, tuple(cur_state))
             else:
                 assert action_space is not None
 
@@ -256,12 +283,12 @@ def _sim(fn, start_state, env, state_space, action_space, use_policy, cost_fn, p
 def sim(fn, start_state, env, 
         state_space=None, action_space=None, 
         use_policy=False, cost_fn=None, 
-        policy_fn=None,
+        policy_fn=None, mesh_fn=None,
         start_proc=True):
     if start_proc:
-        p = mp.Process(target=_sim, args=(fn, start_state, env, state_space, action_space, use_policy, cost_fn, policy_fn))
+        p = mp.Process(target=_sim, args=(fn, start_state, env, state_space, action_space, use_policy, cost_fn, policy_fn, mesh_fn,))
         p.start()
         return p
     else:
-        _sim(fn, start_state, env, state_space, action_space, use_policy, cost_fn, policy_fn)
+        _sim(fn, start_state, env, state_space, action_space, use_policy, cost_fn, policy_fn, mesh_fn)
 

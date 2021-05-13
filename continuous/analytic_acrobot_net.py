@@ -2,6 +2,7 @@ import gym
 import torch
 from torch import sin, cos
 import torch.nn as nn
+import numpy as np
 
 from continuous.analytic_net import AnalyticValueIterNet
 from continuous.acrobot_net import AcrobotNet
@@ -105,11 +106,64 @@ class AnalyticAcrobotNet(AcrobotNet, AnalyticValueIterNet):
 
         if obj == 'min_time':
             c = ((pos > eps / 10) | (vel > eps)).to(torch.uint8)
-            #c += (r[0] > 5).to(torch.uint8)
-            #c += (r[1] > 10).to(torch.uint8)
             return c
+            #c += (torch.abs(r[0]) > 5).to(torch.uint8)
+            #c += (torch.abs(r[1]) > 10).to(torch.uint8)
+            #return c / 3
         elif obj == 'lqr':
             return pos + vel
         else:
             assert False, "Cost model does not support obj {obj}."
+
+    #def action_single(self, J, state, eps, gamma, clip=0):
+    #    dJdt, a = super().action_single(J, state, eps, gamma, clip)
+    #    return dJdt[1,1,1,1].item(), a[1,1,1,1].item()
+
+    @classmethod
+    def get_state_mesh(cls, state, delta=.01): 
+        mesh = np.zeros((4, 3, 3, 3, 3))
+        mesh[0] += state[0]
+        mesh[1] += state[1]
+        mesh[2] += state[2]
+        mesh[3] += state[3]
+
+        mesh[0,0,:,:,:] -= delta
+        mesh[0,2,:,:,:] += delta
+        mesh[1,:,0,:,:] -= delta
+        mesh[1,:,2,:,:] += delta
+        mesh[2,:,:,0,:] -= delta
+        mesh[2,:,:,2,:] += delta
+        mesh[3,:,:,:,0] -= delta
+        mesh[3,:,:,:,2] += delta
+
+        pi = cls.PI
+        mesh[0] %= 2*pi
+        mesh[1] = (mesh[1] + pi) % 2*pi - pi
+        mesh[2][mesh[2] >  cls.MAX_VEL_1] =  cls.MAX_VEL_1
+        mesh[2][mesh[2] < -cls.MAX_VEL_1] = -cls.MAX_VEL_1
+        mesh[3][mesh[3] >  cls.MAX_VEL_2] =  cls.MAX_VEL_2
+        mesh[3][mesh[3] < -cls.MAX_VEL_2] = -cls.MAX_VEL_2
+
+        return mesh
+
+        #u0, d0, u1, d1, u2, d2, u3, d3, state = \
+        #        [np.array(state, dtype=float) for _ in range(9)]
+        #u0[0] += delta
+        #d0[0] -= delta
+        #u1[1] += delta
+        #d1[1] -= delta
+        #u2[2] += delta
+        #d2[2] -= delta
+        #u3[3] += delta
+        #d3[3] -= delta
+        #states = np.array([state, u0, d0, u1, d1, u2, d2, u3, d3])
+
+        #pi = cls.PI
+        #states[:,0] %= 2*pi
+        #states[:,1] = (states[:,1] + pi) % 2*pi - pi
+        #states[:,2][states[:,2] >  cls.MAX_VEL_1] =  cls.MAX_VEL_1
+        #states[:,2][states[:,2] < -cls.MAX_VEL_1] = -cls.MAX_VEL_1
+        #states[:,3][states[:,3] >  cls.MAX_VEL_2] =  cls.MAX_VEL_2
+        #states[:,3][states[:,3] < -cls.MAX_VEL_2] = -cls.MAX_VEL_2
+        #return states
 
