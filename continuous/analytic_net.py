@@ -256,8 +256,7 @@ class AnalyticValueIter(ValueIter):
         a = torch.cat(a, dim=0)
         return dJdt, a
 
-    def run(self, max_iter=1000000, err_tol=.001, use_cuda=True):
-        eps = .1
+    def run(self, eps=.1, max_iter=1000000, err_tol=.001, use_cuda=True):
         with torch.no_grad():
             if self.dsdt is None:
                 self.dsdt, self.ddsdtda = self.net.dsdt_ddsdtda(self.s)
@@ -276,6 +275,7 @@ class AnalyticValueIter(ValueIter):
 
             J = self.J
             pbar = tqdm(range(max_iter))
+            infobar = tqdm(bar_format='{unit}')
 
             last_dJdt = None
             mu = .9
@@ -283,10 +283,22 @@ class AnalyticValueIter(ValueIter):
 
             #clip = min(1000, 10 * (1 + it / 5000))
             clip = 0
+
+            self.dt = .02
             for it in pbar: 
-                gamma = .1
+                gamma = .9
                 dJdt, a = self.step(J, gamma, clip)
                 assert (dJdt[self.cost == 0] == 0).all()
+                J_err = self.err_fn(dJdt)
+
+                if it == 10000:
+                    self.dt = .01
+                elif it == 100000:
+                    self.dt = .001
+                elif it == 500000:
+                    self.dt = .0001
+                elif it == 800000:
+                    self.dt = .00001
 
                 #dJdt[J == 0] = 0
                 #max_step = torch.min(dJdt / (1e-10 + J))
@@ -316,7 +328,6 @@ class AnalyticValueIter(ValueIter):
                         dJdt = (mu * last_dJdt + self.dt * n_dJdt) / (1 + mu)
                 else:
                     dJdt *= self.dt
-                J_err = self.err_fn(dJdt) / self.dt
 
                 J += dJdt
                 last_dJdt = dJdt
@@ -334,11 +345,12 @@ class AnalyticValueIter(ValueIter):
 
                 J -= torch.min(J)
                 J[self.cost == 0] = 0
-
-                pbar.set_postfix_str(#f"a_err: {a_err:.3f}, "
-                                     f"J_err: {J_err:.3f}, "
-                                     f"J_min: {J_min:.3f}, "
-                                     f"J_max: {J_max:.3f}")
+ 
+                infobar.unit = (#f"a_err: {a_err:.3f}, "
+                                f"J_err: {J_err:.4f}, "
+                                f"J_min: {J_min:.4f}, "
+                                f"J_max: {J_max:.4f}").rjust(infobar.ncols)
+                infobar.refresh() 
                 if J_err < err_tol:
                     break
 

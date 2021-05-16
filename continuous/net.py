@@ -222,16 +222,15 @@ class ValueIter(object):
     def err_fn(self, a):
         return torch.max(torch.abs(a))
 
-    def run(self, max_iter=1000000, err_tol=.00001, use_cuda=True):
-        eps = .01
+    def run(self, eps=.01, max_iter=1000000, err_tol=.00001, use_cuda=True):
         with torch.no_grad():
             if self.dsdt is None:
                 self.dsdt = self.net.dsdt(self.s)
                 self.cost = self.net.cost(self.s, eps=eps) / 10
 
 
-                print(self.dsdt)
-                print(self.cost)
+                #print(self.dsdt)
+                #print(self.cost)
 
                 print(torch.sum(self.cost == 0).item())
                 #print(np.unravel_index(torch.argmin(self.cost + 0).cpu(), self.cost.shape))
@@ -245,6 +244,7 @@ class ValueIter(object):
             a = 0 if self.a is None else self.a
             step_size = len(J)
             pbar = tqdm(range(max_iter))
+            infobar = tqdm(bar_format='{unit}')
             #gamma = .000001
             J_err = err_tol + 1
             for it in pbar: 
@@ -309,11 +309,14 @@ class ValueIter(object):
                 #print(J)
                 #input()
 
-                pbar.set_postfix_str(#f"a_err: {a_err:.3f}, "
-                                     f"J_err: {J_err:.3f}, "
-                                     f"J_min: {J_min:.3f}, "
-                                     f"J_max: {J_max:.3f}")
-                if J_err < err_tol and gamma == 1:
+                infobar.unit = (#f"a_err: {a_err:.3f}, "
+                                f"J_err: {J_err:.4f}, "
+                                f"J_min: {J_min:.4f}, "
+                                f"J_max: {J_max:.4f}").rjust(infobar.ncols)
+                infobar.refresh()
+                if J_err < err_tol:
+                    infobar.close()
+                    pbar.close()
                     break
 
                 #if (it + 1) % 1000 == 0:
