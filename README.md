@@ -12,7 +12,7 @@ Notice that the cost to go gets stuck around .2, and the pendulum is ever so sli
 
 Here is a non-uniform geometric mesh at the same resolution, with base exponents 1.1 in both dimensions.
 
-![](assets/pendulum/geom_pend_1.gif)
+![](assets/pendulum/pend2_a_1.gif)
 
 ![](assets/pendulum/pend2_a_2.gif)
 
