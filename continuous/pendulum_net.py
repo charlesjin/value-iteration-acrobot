@@ -1,7 +1,7 @@
 import gym
 import torch
 from torch import sin, cos
-import torch.nn as nn
+import numpy as np
 
 from continuous.net import ValueIterNet
 
@@ -21,7 +21,7 @@ class PendulumNet(ValueIterNet):
     def __init__(self, step_sizes, **kwargs):
         super().__init__(step_sizes, **kwargs)
         self.env = pendulum_env
-        assert len(step_sizes) == 3
+        #assert len(step_sizes) == 3
 
     def get_grid_partials(self, J, dsdt, periodic=[0], order='first', upwind=True):
         return super().get_grid_partials(J, dsdt, periodic, order, upwind)
@@ -87,4 +87,47 @@ class PendulumNet(ValueIterNet):
             return pos + reg
         else:
             assert False, "Cost model does not support obj {obj}."
+
+    @classmethod
+    def get_state_mesh(cls, state, delta=.01): 
+        mesh = np.zeros((3, 3, 3, 3))
+        mesh[0] += state[0]
+        mesh[1] += state[1]
+
+        mesh[2,:,:,0] = -cls.TORQUE_LIMIT
+        mesh[2,:,:,1] = 0
+        mesh[2,:,:,2] = cls.TORQUE_LIMIT 
+
+        mesh[0,0,:] -= delta
+        mesh[0,2,:] += delta
+        mesh[1,:,0] -= delta
+        mesh[1,:,2] += delta
+
+        pi = cls.PI
+        mesh[0] = (mesh[0] + pi) % 2*pi - pi
+        mesh[1][mesh[1] >  cls.MAX_VEL] =  cls.MAX_VEL
+        mesh[1][mesh[1] < -cls.MAX_VEL] = -cls.MAX_VEL
+
+        return mesh
+
+    def action_single(self, state, interpolate_fn, eps, gamma, delta=.01):
+        states_and_actions = self.get_state_mesh(state, delta)
+        states = states_and_actions[0:2,:,:,0]
+
+        J = interpolate_fn(np.transpose(states.reshape(states.shape[0], -1)))
+        J = torch.Tensor(J.reshape(states.shape[1:]))
+
+        states = torch.Tensor(states_and_actions)
+        dsdt = self.dsdt(states)
+        cost = self.cost(states, eps=eps)
+
+        step_sizes = self.step_sizes
+        self.step_sizes = torch.Tensor([delta] * len(J.shape))
+        dJdt, a = self.forward(J, dsdt, cost, gamma)
+        self.step_sizes = step_sizes
+
+        while len(dJdt.shape) > 1:
+            dJdt = dJdt[1]
+            a = a[1]
+        return dJdt[1].item(), a[1].item()
 

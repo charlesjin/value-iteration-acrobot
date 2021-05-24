@@ -109,14 +109,11 @@ class AcrobotNet(ValueIterNet):
         vel = torch.sum(r*r, dim=0)
 
         if obj == 'min_time':
-            c = (pos > eps / 10) | (vel > eps)
-            #c = torch.clamp(pos, max=eps) + torch.clamp(vel, max=eps)
-            #c /= (2*eps)
-            #c[(pos + vel) < 1e-4] = 0
+            c = (pos > eps) | (vel > eps)
             return c
         elif obj == 'lqr':
             reg = s[-1] * s[-1] * 4
-            #reg /= torch.max(reg)
             return pos + vel + reg
         else:
             assert False, "Cost model does not support obj {obj}."
+

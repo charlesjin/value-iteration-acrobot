@@ -12,48 +12,62 @@ device = torch.device("cuda:0") if torch.cuda.is_available() else host
 #torch.set_default_tensor_type(torch.DoubleTensor)
 
 class ValueIterNet(nn.Module):
-    def __init__(self, step_sizes, **kwargs):
+    def __init__(self, step_sizes=None, state_space=None, **kwargs):
         super().__init__()
         self.step_sizes = step_sizes
+        self.ss = state_space
+        assert self.step_sizes is not None or self.state_space is not None
+        
+        self.den = None
+
+    def _unnorm_partial(self, J, periodic, direction, dim):
+        if direction == 'up':
+            N = J.shape[dim]
+            d0 = torch.narrow(J, dim, 1, 1) - torch.narrow(J, dim, 0, 1)
+            if periodic: 
+                d2 = d0
+            else:
+                d2 = torch.zeros(torch.narrow(J, dim, 1, 1).shape).to(J.device)
+            d1 = torch.narrow(J, dim, 2, N-2) - torch.narrow(J, dim, 1, N-2)
+
+            return torch.cat((d0, d1, d2), dim=dim)
+        elif direction == 'down':
+            N = J.shape[dim]
+            d2 = torch.narrow(J, dim, -1, 1) - torch.narrow(J, dim, -2, 1)
+            if periodic: 
+                d0 = d2
+            else:
+                d0 = torch.zeros(torch.narrow(J, dim, 1, 1).shape).to(J.device)
+            d1 = torch.narrow(J, dim, 1, N-2) - torch.narrow(J, dim, 0, N-2)
+            return torch.cat((d0, d1, d2), dim=dim)
+        else:
+            assert False
 
     def _get_grid_partials(self, J, periodic, direction='symmetric'):
+        if self.ss is not None and self.den is None:
+            assert isinstance(self.ss, torch.Tensor)
+            self.den = []
+            for dim in range(len(self.ss)):
+                den = torch.abs(
+                        self._unnorm_partial(self.ss[dim], dim in periodic, 
+                        direction, dim))
+                den[den == 0] = 1
+                self.den.append(den)
+
         if direction == 'symmetric':
+            up = self._get_grid_partials(J, periodic, 'up')
+            down = self._get_grid_partials(J, periodic, 'down')
+            return (up + down) / 2.
+        else:
             out = []
             for dim in range(len(J.shape)):
-                N = J.shape[dim]
-                if dim in periodic: 
-                    d0 = torch.narrow(J, dim, 1, 1) - torch.narrow(J, dim, -2, 1)
-                    d2 = d0
+                num = self._unnorm_partial(J, dim in periodic, direction, dim)
+                if self.den is not None:
+                    den = self.den[dim]
                 else:
-                    d0 = torch.narrow(J, dim, 1, 1) - torch.narrow(J, dim, 0, 1)
-                    d2 = torch.narrow(J, dim, -1, 1) - torch.narrow(J, dim, -2, 1)
-                d1 = torch.narrow(J, dim, 2, N-2) - torch.narrow(J, dim, 0, N-2)
-                out.append((torch.cat((d0, d1, d2), dim=dim) / 2 / self.step_sizes[dim]))
+                    den = self.step_sizes[dim]
+                out.append(num/den/2)
             return torch.stack(out)
-        elif direction == 'up':
-            up = []
-            for dim in range(len(J.shape)):
-                N = J.shape[dim]
-                d0 = torch.narrow(J, dim, 1, 1) - torch.narrow(J, dim, 0, 1)
-                if dim in periodic: 
-                    d2 = d0
-                else:
-                    d2 = torch.zeros(torch.narrow(J, dim, 1, 1).shape).to(J.device)
-                d1 = torch.narrow(J, dim, 2, N-2) - torch.narrow(J, dim, 1, N-2)
-                up.append((torch.cat((d0, d1, d2), dim=dim) / 2 / self.step_sizes[dim]))
-            return torch.stack(up)
-        elif direction == 'down':
-            down = []
-            for dim in range(len(J.shape)):
-                N = J.shape[dim]
-                d2 = torch.narrow(J, dim, -1, 1) - torch.narrow(J, dim, -2, 1)
-                if dim in periodic: 
-                    d0 = d2
-                else:
-                    d0 = torch.zeros(torch.narrow(J, dim, 1, 1).shape).to(J.device)
-                d1 = torch.narrow(J, dim, 1, N-2) - torch.narrow(J, dim, 0, N-2)
-                down.append((torch.cat((d0, d1, d2), dim=dim) / 2 / self.step_sizes[dim]))
-            return torch.stack(down)
         assert False
 
     def get_grid_partials(self, J, dsdt, periodic, order='first', upwind=True):
@@ -72,68 +86,30 @@ class ValueIterNet(nn.Module):
         if upwind is true, use an upwind differencing scheme
         """
 
-        #for dim in range(len(J.shape)):
-        #    borders = []
-        #    if dim in periodic: 
-        #        borders.append(torch.narrow(J, dim, -2, 1))
-        #        borders.append(torch.narrow(J, dim, 1, 1))
-        #    else:
-        #        borders.append(torch.narrow(J, dim, 0, 1))
-        #        borders.append(torch.narrow(J, dim, -1, 1))
-        #    J = torch.cat((borders[0], J, borders[1]), dim=dim)
-
         if order == 'first' and not upwind:
             out = self._get_grid_partials(J, periodic, direction='symmetric').unsqueeze(dim=-1)
-            #if torch.max(J) > 20:
-            #    print(J)
-            #    print(out.squeeze(dim=-1))
-            #    input()
             return out * dsdt
 
         elif order == 'first' and upwind:
             up = self._get_grid_partials(J, periodic, direction='up').unsqueeze(dim=-1)
             up_dsdt = torch.clamp(dsdt, min=0)
-            #print(J)
-            #print(up.squeeze(dim=-1))
-            #print(up_dsdt)
-            #print(up * up_dsdt)
-            #input()
             ret = up * up_dsdt
             del up
             del up_dsdt
 
             down = self._get_grid_partials(J, periodic, direction='down').unsqueeze(dim=-1)
             down_dsdt = torch.clamp(dsdt, max=0)
-            #print(J)
-            #print(down.squeeze(dim=-1))
-            #print(down_dsdt)
-            #print(down * down_dsdt)
-            #input()
             ret += down * down_dsdt
             return ret
 
         assert False, f"differencing scheme of order={order} with upwind={upwind} not implemented"
 
     def forward(self, J, dsdt, cost, gamma=1):
-        #if torch.max(J) > 20:
-        #    print(J)
-        #    input()
-        #    print(dsdt)
-        #    input()
-        #dJdt_a = self.get_grid_partials(J, dsdt, upwind=False)
-        #if torch.max(J) > 20:
-        #    print(dJdt_a)
-        #    input()
         dJdt_a = torch.sum(
                 self.get_grid_partials(J, dsdt, upwind=True), 
                 dim=0) * gamma \
             + cost
         dJdt, a = torch.min(dJdt_a, dim=-1)
-        #if torch.max(J) > 20:
-        #    print(dJdt_a)
-        #    print(dJdt)
-        #    print(a)
-        #    input()
         return dJdt, a
 
     @classmethod
@@ -145,16 +121,34 @@ class ValueIterNet(nn.Module):
         raise NotImplementedError
 
     @classmethod
-    def cost_single(cls, s, eps, add_dims=1):
-        s = torch.cat((torch.Tensor(s), torch.zeros(add_dims)))
+    def cost_single(cls, s, eps):
+        s = torch.cat((torch.Tensor(s), torch.zeros(1)))
         dims = len(s)
         for _ in range(dims):
             s = torch.unsqueeze(s, dim=-1)
         return cls.cost(s, eps).item()
 
+    @classmethod
+    def geomcoord(cls, x, l, u, s, midpoint=0, exp=1.5):
+        # converts geometric coordinates into linear coordinates
+        s = s // 2 + 1
+        assert (x >= l).all()
+        assert (x <= u).all()
+        c = x - midpoint
+        n = torch.log(torch.abs(c) * (exp ** (s-1) - 1) / (u - midpoint) + 1)
+        if exp is not None:
+            n /= np.log(exp)
+        r = (u - l) / 2
+        m = r / (s-1) * n * torch.sign(c) + midpoint
+        m[m > u] = float(u)
+        m[m < l] = float(l)
+        return m
+
+
 class ValueIter(object):
-    def __init__(self, net, dt, lowers, uppers, steps, midpoints, use_cuda=True, 
+    def __init__(self, name, net, dt, lowers, uppers, steps, midpoints, use_cuda=True, 
             **net_kwargs):
+        self.name = name
         self.dt = dt
         self.use_cuda = use_cuda
 
@@ -172,8 +166,6 @@ class ValueIter(object):
 
         self.net = net(self.step_sizes, **net_kwargs)
         self.env = self.net.env
-        #self.J = torch.rand(self.s.shape[1:-1])
-        #self.J = torch.ones(self.s.shape[1:-1]) * 3
         self.J = torch.zeros(self.s.shape[1:-1])
         self.a = None
 
@@ -194,120 +186,114 @@ class ValueIter(object):
         self.action_space = self.linspace(lowers[-1], uppers[-1], 100, #int(steps[-1]), 
                 self.midpoints[-1])
 
-    def linspace(self, l, u, s, midpoint=0):
+    @classmethod
+    def linspace(cls, l, u, s, midpoint=0):
         s = s // 2 + 1
         return torch.cat((
             torch.linspace(l, midpoint, s)[:-1],
             torch.Tensor([midpoint]),
             torch.linspace(midpoint, u, s)[1:]), dim=0)
 
-    def geomspace(self, l, u, s, midpoint=0, res=100):
+    @classmethod
+    def geomspace(cls, l, u, s, midpoint=0, exp=1.5):
         s = s // 2 + 1
-        diff = (u - l) / 2
+        lower = torch.linspace(-(s-1), 0, s)[:-1]
+        upper = torch.linspace(0, s-1, s)[1:]
 
-        # steps ranges from 0 to diff
-        steps = (np.linspace(1, 1+s*res, s) - 1) * diff / (s*res)
+        lower = exp ** (-lower) - 1
+        upper = exp ** upper - 1
 
-        lower = torch.Tensor(-steps[::-1] - midpoint)
-        lower[0] = l
+        r = (u - l) / 2
+        lower = lower / lower[0]
+        lower *= -r
+        lower += midpoint
 
-        upper = torch.Tensor(steps + midpoint)
-        upper[-1] = u
+        upper = upper / upper[-1]
+        upper *= r
+        upper += midpoint
 
         return torch.cat((
-            lower[:-1],
+            lower,
             torch.Tensor([midpoint]),
-            upper[1:]), dim=0)
+            upper), dim=0)
 
     def err_fn(self, a):
         return torch.max(torch.abs(a))
+
+    def step(self, J, gamma, step_size=None):
+        if step_size is None:
+            step_size = len(J)
+        dJdt = []
+        a = []
+        for start in range(0, len(J), step_size):
+            end = min(len(J),start + step_size)
+
+            _dJdt, _a = self.net(J[start:end], 
+                             self.dsdt[:,start:end], 
+                             self.cost[start:end],
+                             gamma=gamma)
+
+            dJdt.append(_dJdt)
+            a.append(_a)
+        dJdt = torch.cat(dJdt, dim=0)
+        a = torch.cat(a, dim=0)
+        return dJdt, a
 
     def run(self, eps=.01, max_iter=1000000, err_tol=.00001, use_cuda=True):
         with torch.no_grad():
             if self.dsdt is None:
                 self.dsdt = self.net.dsdt(self.s)
-                self.cost = self.net.cost(self.s, eps=eps) / 10
-
-
-                #print(self.dsdt)
-                #print(self.cost)
-
+                self.cost = self.net.cost(self.s, eps=eps)
                 print(torch.sum(self.cost == 0).item())
-                #print(np.unravel_index(torch.argmin(self.cost + 0).cpu(), self.cost.shape))
-                #self.cost[tuple([int(s//2) for s in self.steps])] = 0
-                #self.dsdt[:,tuple([int(s//2) for s in self.steps])] = 0
 
             fixed_points = torch.prod(self.cost, dim=-1) < 1e-6
             self.J[fixed_points] = 0
 
             J = self.J
-            a = 0 if self.a is None else self.a
-            step_size = len(J)
             pbar = tqdm(range(max_iter))
             infobar = tqdm(bar_format='{unit}')
-            #gamma = .000001
-            J_err = err_tol + 1
+
+            last_dJdt = None
+            mu = 0 
+            nesterov = False
+
+            gamma = 1
             for it in pbar: 
-                #tau = min(1, .00001 * (1+it))
-                #gamma = min(1, .00001 * (1 + it))
-                #if J_err < err_tol:
-                #    gamma += .000001
-                #    gamma = min(1, gamma)
-                #    print(gamma)
-                gamma = 1
-                dJdt = []
-                a_new = []
-                for start in range(0, len(J), step_size):
-                    end = min(len(J),start + step_size)
+                dJdt, a = self.step(J, gamma)
 
-                    _dJdt, _a = self.net(J[start:end], 
-                                        self.dsdt[:,start:end], 
-                                        self.cost[start:end],
-                                        gamma=gamma)
+                dJdt[fixed_points] = 0
+                a[fixed_points] = 0
 
-                    dJdt.append(_dJdt)
-                    a_new.append(_a)
-                dJdt = torch.cat(dJdt, dim=0)
-                #print(dJdt)
-                #input()
-
-                #assert (J[torch.prod(self.cost, dim=-1) == 0] == 0).all()
                 J_err = self.err_fn(dJdt)
 
-                #a_new = torch.cat(a_new, dim=0)
-                #a_err = self.err_fn(a_new - a)
-                #a = a_new
-                a = torch.cat(a_new, dim=0)
-
                 dJdt_max = torch.max(torch.abs(dJdt))
-                dJdt[torch.abs(dJdt) < .0001 * dJdt_max] = 0
-                #dJdt[dJdt < .0001 * dJdt_max] = 0
-                #print(dJdt[torch.prod(self.cost, dim=-1) == 0])
-                #assert (dJdt[torch.prod(self.cost, dim=-1) == 0] == 0).all()
-                if dJdt_max > 1:
-                    dJdt /= dJdt_max
 
-                #J = dJdt * self.dt + J * (1 - self.dt)
-                #print(J)
-                J += dJdt * self.dt
-                #print(dJdt)
-                #print(J)
+                # TODO
+                #if dJdt_max > 1:
+                #    dJdt /= dJdt_max
+                dJdt = torch.clamp_(dJdt, max=1, min=-1)
 
-                #J -= J[10,10,10,10].item()
+                if it > 10000 and mu != 0 and last_dJdt is not None:
+                    dJdt = (mu * last_dJdt + self.dt * dJdt) / (1 + mu)
+                    if nesterov:
+                        new_J = J + dJdt
+                        new_J -= torch.min(new_J)
+                        new_J[fixed_points == 0] = 0
+
+                        n_dJdt, a = self.step(new_J, gamma)
+                        n_dJdt = torch.clamp_(n_dJdt, max=1, min=-1)
+                        dJdt = (mu * last_dJdt + self.dt * n_dJdt) / (1 + mu)
+                else:
+                    dJdt *= self.dt
+
+                J += dJdt
+                last_dJdt = dJdt
 
                 J_max = torch.max(J)
                 J_min = torch.min(J)
 
-                #J_abs_max = max(-J_min, J_max)
-                #if J_abs_max > 100:
-                #    #J[abs(J) > 50] = 50.
-                #    J = torch.clamp_(J, min=0, max=50)
-
-                J -= J_min #torch.min(J)
+                J -= J_min
                 J[fixed_points] = 0
-                #J[torch.min(self.cost, dim=-1) == 0] = 0
-                #print(J)
-                #input()
 
                 infobar.unit = (#f"a_err: {a_err:.3f}, "
                                 f"J_err: {J_err:.4f}, "
@@ -319,27 +305,24 @@ class ValueIter(object):
                     pbar.close()
                     break
 
-                #if (it + 1) % 1000 == 0:
-                #    print(J)
-                #    input()
+                if (it + 1) % 1000 == 0:
+                    np.save(f"outputs/precompute/{self.name}_ctg", 
+                               J.to(host).detach().numpy())
+                    np.save(f"outputs/precompute/{self.name}_a", 
+                               a.to(host).detach().numpy())
 
                 if (it + 1) % 10000 == 0:
-                    #eps = 1. / (1 + it / 100000)
-                    #eps = max(eps, .001)
-                    #self.cost = self.net.cost(self.s, eps)
-                    #print(torch.sum(self.cost == 0).item())
-
-                    np.save(f"outputs/precompute/ctg", 
-                               J.to(host).detach().numpy())
-                    #a = torch.cat(a, dim=0)
+                    cost_fn = lambda x, u: type(self.net).cost_single(x, eps)
+                    policy_fn = lambda s, J_fn: self.net.action_single(s, J_fn, eps, gamma)
                     self.simulate(J=J, a=a, 
-                                  cost_fn=lambda x, u: type(self.net).cost_single(x, eps))
+                            cost_fn=cost_fn, policy_fn=policy_fn, name=name)
 
         self.J = J.to(host).detach()
-        #a = torch.cat(a, dim=0)
         self.a = a.to(host).detach()
 
-    def simulate(self, J=None, a=None, cost_fn=None):
+        return it, J_err
+
+    def simulate(self, J=None, a=None, cost_fn=None, policy_fn=None):
         if J is None:
             J = self.J
         try:
@@ -360,16 +343,26 @@ class ValueIter(object):
         if cost_fn is None:
             cost_fn = lambda x, u: type(self.net).cost_single(x, .01)
 
+        if policy_fn is None:
+            policy_fn = lambda s, J_fn: self.net.action_single(s, J_fn, .01, 1)
+
         # simulate
         procs = []
         for idx, start_state in enumerate(self.env.sim_states):
-            p = sim(f"outputs/videos/output_J_{idx}", 
+            p = sim(f"outputs/videos/{self.name}_J_{idx}", 
                     start_state, self.env, self.state_space, 
-                    action_space=self.action_space, cost_fn=cost_fn)
+                    action_space=self.action_space, cost_fn=cost_fn,
+                    policy_fn=policy_fn)
+            procs.append(p)
+
+            p = sim(f"outputs/videos/{self.name}_hold_{idx}", 
+                    start_state, self.env, self.state_space, 
+                    action_space=self.action_space, cost_fn=cost_fn,
+                    policy_fn=None)
             procs.append(p)
 
             if a is not None:
-                p = sim(f"outputs/videos/output_a_{idx}", 
+                p = sim(f"outputs/videos/{self.name}_a_{idx}", 
                         start_state, self.env, self.state_space, 
                         action_space=self.action_space, use_policy=True, 
                         cost_fn=cost_fn)

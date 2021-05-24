@@ -17,7 +17,7 @@ class CustomPendulumEnv(classic_control.PendulumEnv):
     def __init__(self, g=9.8):
         self.max_speed = 8
         self.max_torque = 2.
-        self.dt = .01
+        self.dt = .001
         self.g = g
         self.m = 1.
         self.l = 1.

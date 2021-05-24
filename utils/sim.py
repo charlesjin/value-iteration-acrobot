@@ -82,38 +82,79 @@ def add_zero_text(env, view, state, time):
 
     return view
 
-def _sim(fn, start_state, env, state_space, action_space, use_policy, 
-         cost_fn, policy_fn, mesh_fn):
-    if state_space is not None:
-        assert action_space is not None
-    if use_policy:
-        assert state_space.data_dims > 1
+def add_policy_text(view, j):
+    font                   = cv2.FONT_HERSHEY_SIMPLEX
+    fontScale              = .4 
+    fontColor              = 255
+    thickness              = 1
 
-    #env.dt = .00001
+    text = f"policy={j}"
+
+    bottomLeftCornerOfText = (420,25)
+    view = cv2.putText(view, text,
+        bottomLeftCornerOfText, 
+        font, 
+        fontScale,
+        fontColor,
+        thickness=thickness)
+
+    return view
+
+def make_list(a, l=1):
+    if not isinstance(a, list):
+        return [a] * l
+    return a
+
+def _sim(fn, start_state, env, state_space, action_space, use_policy, 
+         cost_fn, policy_fn):
+    state_spaces = make_list(state_space)
+    action_spaces = make_list(action_space)
+    l = len(state_spaces)
+    use_policys = make_list(use_policy, l)
+    cost_fns = make_list(cost_fn, l)
+    policy_fns = make_list(policy_fn, l)
+
+    for i in range(len(state_spaces)):
+        state_space = state_spaces[i]
+        action_space = action_spaces[i]
+
+        if state_space is not None:
+            assert action_space is not None
+        if use_policy:
+            assert state_space.data_dims > 1
 
     fps = int (1 / env.dt)
     skip_frames = fps // 30 + 1
 
     try:
-        #out = cv2.VideoWriter(f'{fn}.mp4', cv2.VideoWriter_fourcc(*'mp4v'), fps, (500, 500), False)
         out = imageio.get_writer(f'{fn}.tmp.gif', mode='I', duration=env.dt * skip_frames)
 
         env.state = start_state
 
         ctg = state_space.interpolate(np.array([start_state]))[0]
         start_frame = cv2.rotate(env.render(), cv2.cv2.ROTATE_90_COUNTERCLOCKWISE)
+        cost_fn = cost_fns[-1]
         cost = cost_fn(start_state, 0)
         warn_text = f"cost=0 at time=X"
         start_frame = add_text(env, start_frame, start_state, 0, ctg, cost, warn_text)
         for i in range(fps // 2):
             if i % skip_frames == 0:
-                #out.write(start_frame)
                 out.append_data(start_frame)
 
         mu = 0 
         zero_state = None
         for i in range(fps * seconds):
             cur_state = env.state
+            cs = np.array(cur_state)
+            for j in range(len(state_spaces)):
+                state_space = state_spaces[j]
+                action_space = action_spaces[j]
+                use_policy = use_policys[j]
+                policy_fn = policy_fns[j]
+                if np.all(cs >= (state_space.lowers+.02)) and \
+                        np.all(cs <= (state_space.uppers-.02)):
+                    break
+
             if state_space is None:
                 # simulate the natural dynamics
                 action = 0 
@@ -163,70 +204,12 @@ def _sim(fn, start_state, env, state_space, action_space, use_policy,
 
                 env.step(action, cur_state)
             elif policy_fn is not None:
-                #delta = .01
-                ##u0, d0, u1, d1, u2, d2, u3, d3, cur_state = [np.array(cur_state, dtype=float) for _ in range(9)]
-                ##u0[0] += delta
-                ##d0[0] -= delta
-                ##u1[1] += delta
-                ##d1[1] -= delta
-                ##u2[2] += delta
-                ##d2[2] -= delta
-                ##u3[3] += delta
-                ##d3[3] -= delta
-                ##states = np.array([cur_state, u0, d0, u1, d1, u2, d2, u3, d3])
-
-                #states = mesh_fn(cur_state)
-                #Js = state_space.interpolate(states, data_dim=0)
-                #J, Js = Js[0], Js[1:]
-
-                #local_J = np.zeros([3,3,3,3])
-                #local_J[1,1,1,1] = J
-
-                #Js = (Js - J) / delta
-                #Js[0:2] *= state_space.step_sizes[0]
-                #Js[2:4] *= state_space.step_sizes[1]
-                #Js[4:6] *= state_space.step_sizes[2]
-                #Js[6:8] *= state_space.step_sizes[3]
-                #Js += J
-                #
-                #local_J[2,1,1,1] = Js[0]
-                #local_J[0,1,1,1] = Js[1]
-                #local_J[1,2,1,1] = Js[2]
-                #local_J[1,0,1,1] = Js[3]
-                #local_J[1,1,2,1] = Js[4]
-                #local_J[1,1,0,1] = Js[5]
-                #local_J[1,1,1,2] = Js[6]
-                #local_J[1,1,1,0] = Js[7]
-
-                #dJdt, action = policy_fn(local_J, cur_state)
                 dJdt, action = policy_fn(cur_state, 
                         lambda x: state_space.interpolate(x, data_dim=0))
                 J = state_space.interpolate(np.array([cur_state]))[0]
                 ctg = J - dJdt * env.dt
                 env.step(action, tuple(cur_state))
 
-                #last_action = action
-                #mult = 1
-                #state = tuple(cur_state)
-                #mu = .9
-                #steps = 10
-                #for _ in range(steps):
-                #    env.step(action, state)
-                #    state = env.state
-                #    # Nesterov-inspired step
-                #    next_dJdt, next_action = policy_fn(state, 
-                #            lambda x: state_space.interpolate(x, data_dim=0))
-                #    if next_dJdt * dJdt < 0:
-                #        mult *= (1 - mu)
-                #        #action = action - mult * last_action + mult * next_action
-                #        action = action * mu + next_action * (1 - mu)
-                #        #last_action = next_action
-                #        #dJdt = next_dJdt
-                #    else:
-                #        break
-                #    #action = mu * action + (1 - mu) * next_action
-                #ctg = J
-                #env.step(action, tuple(cur_state))
             else:
                 assert action_space is not None
 
@@ -237,26 +220,11 @@ def _sim(fn, start_state, env, state_space, action_space, use_policy,
                                        (end_states <= state_space.uppers).all(axis=1))
 
                 costs_to_go = state_space.interpolate(end_states[valid])
-
-                #valid_actions = action_space[valid]
-                #u_cost = valid_actions.dot(valid_actions) / 1000
-                #a_idx = np.argmin(costs_to_go + u_cost)
                 a_idx = np.argmin(costs_to_go)
 
                 action = action_space[valid][a_idx]
                 ctg = costs_to_go[a_idx]
                 env.state = end_states[valid][a_idx]
-
-                #idxs = state_space.interpolate(end_states[valid])
-                #costs_to_go = state_space.data[0][idxs]
-                #a_idx = np.argmin(costs_to_go)
-                #coord = [x[a_idx] for x in idxs]
-                #action = action_space[valid][a_idx]
-                #ctg = costs_to_go[a_idx]
-
-                #flat_coord = np.ravel_multi_index(coord, state_space.steps+1)
-                #cur_state = state_space.points[flat_coord,:]
-                #env.state = cur_state
 
             cost = cost_fn(cur_state, action)
             if cost == 0:
@@ -266,15 +234,14 @@ def _sim(fn, start_state, env, state_space, action_space, use_policy,
 
             if i % skip_frames == 0:
                 view = cv2.rotate(env.render(action), cv2.cv2.ROTATE_90_COUNTERCLOCKWISE)
+                view = add_policy_text(view, j)
                 view = add_text(env, view, cur_state, action, ctg, cost, warn_text)
                 if zero_state is not None:
                     view = add_zero_text(env, view, zero_state, zero_time)
 
-                #out.write(view)
                 out.append_data(view)
 
 
-        #out.release()
         out.close()
         os.rename(f'{fn}.tmp.gif', f'{fn}.gif')
     except KeyboardInterrupt:
@@ -283,12 +250,12 @@ def _sim(fn, start_state, env, state_space, action_space, use_policy,
 def sim(fn, start_state, env, 
         state_space=None, action_space=None, 
         use_policy=False, cost_fn=None, 
-        policy_fn=None, mesh_fn=None,
+        policy_fn=None,
         start_proc=True):
     if start_proc:
-        p = mp.Process(target=_sim, args=(fn, start_state, env, state_space, action_space, use_policy, cost_fn, policy_fn, mesh_fn,))
+        p = mp.Process(target=_sim, args=(fn, start_state, env, state_space, action_space, use_policy, cost_fn, policy_fn,))
         p.start()
         return p
     else:
-        _sim(fn, start_state, env, state_space, action_space, use_policy, cost_fn, policy_fn, mesh_fn)
+        _sim(fn, start_state, env, state_space, action_space, use_policy, cost_fn, policy_fn)
 
