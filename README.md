@@ -4,7 +4,7 @@ This section comprises the experimental results; for the rest of the final repor
 
 ### Simple Pendulum
 
-Here is a solution for the pendulum swing up problem using a 320 x 320 state space mesh.
+Here is a solution for the pendulum swing up problem using a 320x320 state space mesh. The dimensions of the state space correspond to (theta, dtheta).
  
 ![](assets/pendulum/320_320_output_J.gif)
 
@@ -46,11 +46,11 @@ All the controllers in this section converge in less than a thousand iterations,
 
 ### Acrobot
 
-The acrobot tends to fall over even when initialized to the upright
+The acrobot tends to fall over even when initialized to the upright.
 
 ![](assets/acrobot/falling_over.gif)
 
-Using a (40x40x40x40) geometric mesh solves this problem
+Using a (40x40x40x40) geometric mesh solves this problem. The dimensions of the state space correspond to (theta1, theta2, dtheta1, dtheta2).
 
 ![](assets/acrobot/geom_balancing.gif)
 
