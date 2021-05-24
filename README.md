@@ -14,17 +14,6 @@ Here is a non-uniform geometric mesh at the same resolution, with base exponents
 
 ![](assets/pendulum/geom_pend_1.gif)
 
-The cost to go now goes to zero and the pendulum appears to be fully upright.
-
-In fact, we actually get a pretty good solution using a 20x20 state space mesh.
-In the theta dimension, we have used a base exponent 1.3, which yields a maximum effective resolution of 226.7 around the upright, and a minimum effective resolution of 5.9 around at the bottom. In other words, in order to get the same resolution around the upright with a uniform mesh, you would need 226.7 steps in the theta dimension.
-In the dtheta dimension, we have used a base exponent 1.1, which yields a maximum resolution of 85.2 around dtheta=1 and a minimum resolution of 8.0 at the maximum velocities. 
-Note that these solutions are clearly not optimal--in particular, it requires pumping many more times than is strictly necessary, but once they approach the upright, it does stabilize.
-
-![](assets/pendulum/pend2_a_0.gif)
-
-![](assets/pendulum/pend2_a_1.gif)
-
 ![](assets/pendulum/pend2_a_2.gif)
 
 ![](assets/pendulum/pend2_a_3.gif)
@@ -32,6 +21,24 @@ Note that these solutions are clearly not optimal--in particular, it requires pu
 ![](assets/pendulum/pend2_a_4.gif)
 
 ![](assets/pendulum/pend2_a_5.gif)
+
+The cost to go now goes to zero and the pendulum appears to be fully upright.
+
+In fact, we actually get a pretty good solution using a 20x20 state space mesh.
+In the theta dimension, we have used a base exponent 1.3, which yields a maximum effective resolution of 226.7 around the upright, and a minimum effective resolution of 5.9 around at the bottom. In other words, in order to get the same resolution around the upright with a uniform mesh, you would need 226.7 steps in the theta dimension.
+In the dtheta dimension, we have used a base exponent 1.1, which yields a maximum resolution of 85.2 around dtheta=1 and a minimum resolution of 8.0 at the maximum velocities. 
+
+Note that these solutions are clearly not optimal--in particular, it requires pumping many more times than is strictly necessary, but once they approach the upright, it does stabilize.
+
+![](assets/pendulum/geom_pend2_a_1.gif)
+
+![](assets/pendulum/geom_pend2_a_2.gif)
+
+![](assets/pendulum/geom_pend2_a_3.gif)
+
+![](assets/pendulum/geom_pend2_a_4.gif)
+
+![](assets/pendulum/geom_pend2_a_5.gif)
 
 Finally, we can also visualize the resulting cost-to-gos. Below is the cost-to-go of the uniform 320x320 mesh.
 
