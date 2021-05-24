@@ -18,9 +18,6 @@ Here is a non-uniform geometric mesh at the same resolution, with base exponents
 
 ![](assets/pendulum/pend2_a_3.gif)
 
-![](assets/pendulum/pend2_a_4.gif)
-
-![](assets/pendulum/pend2_a_5.gif)
 
 The cost to go now goes to zero and the pendulum appears to be fully upright.
 
@@ -35,10 +32,6 @@ Note that these solutions are clearly not optimal--in particular, it requires pu
 ![](assets/pendulum/geom_pend2_a_2.gif)
 
 ![](assets/pendulum/geom_pend2_a_3.gif)
-
-![](assets/pendulum/geom_pend2_a_4.gif)
-
-![](assets/pendulum/geom_pend2_a_5.gif)
 
 Finally, we can also visualize the resulting cost-to-gos. Below is the cost-to-go of the uniform 320x320 mesh.
 
