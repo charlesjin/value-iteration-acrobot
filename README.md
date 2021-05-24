@@ -22,7 +22,7 @@ The cost to go now goes to zero and the pendulum appears to be fully upright.
 
 In fact, we actually get a pretty good solution using a 20x20 state space mesh.
 In the theta dimension, we have used a base exponent 1.3, which yields a maximum effective resolution of 226.7 around the upright, and a minimum effective resolution of 5.9 around at the bottom. In other words, in order to get the same resolution around the upright with a uniform mesh, you would need 226.7 steps in the theta dimension.
-In the dtheta dimension, we have used a base exponent 1.1, which yields a maximum resolution of 85.2 around dtheta=1 and a minimum resolution of 8.0 at the maximum velocities. 
+In the dtheta dimension, we have used a base exponent 1.1, which yields a maximum resolution of 85.2 around dtheta=0 and a minimum resolution of 8.0 at the maximum velocities. 
 
 Note that these solutions are clearly not optimal--in particular, it requires pumping many more times than is strictly necessary, but once they approach the upright, it does stabilize.
 
