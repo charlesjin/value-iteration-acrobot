@@ -32,15 +32,15 @@ Note that these solutions are clearly not optimal--in particular, it requires pu
 
 ![](assets/pendulum/geom_pend2_a_3.gif)
 
-Finally, we can also visualize the resulting cost-to-gos. Below is the cost-to-go of the uniform 320x320 mesh.
+Finally, we can also visualize the resulting cost-to-gos. Below is the "true" cost-to-go, computed using a uniform 320x320 mesh.
 
 ![](assets/pendulum/pend2_ctg_plot.png)
 
-We can compare this with the cost-to-go of the 20x20 geometric mesh. Note that this is plotted on a geometric scale (so that 10 is really something like 1.3^10, for instance).
+We can compare this with the cost-to-go of the 20x20 geometric mesh. Note that this is plotted on a geometric scale (so that 10 in the theta dimension is really something like 1.3^10, for instance).
 
 ![](assets/pendulum/geom_pend2_ctg_plot.png)
 
-Qualitatively, the geometric mesh looks to be about the right shape. However the two main differences are 1) the additional resolution around the zero-cost configuration leads to smaller gradients, which intuitively explains why the recovered cost-to-go is able to perform despite having far fewer mesh points, and 2) the cost-to-go does not capture the details of the cost-to-go further away from the zero-cost configuration; however, this does not prevent the resulting controller from (eventually) driving the pendulum to the upright.
+Qualitatively, the geometric mesh looks to be about the right shape. However the two main differences are 1) the additional resolution around the zero-cost configuration leads to less steep gradients, which intuitively explains why the recovered cost-to-go is able to perform despite having far fewer mesh points, and 2) the cost-to-go does not capture the details of the cost-to-go further away from the zero-cost configuration; however, this does not prevent the resulting controller from (eventually) driving the pendulum to the upright.
 
 All the controllers in this section converge in less than a thousand iterations, which takes about 10 seconds on an RTX 2070.
 
@@ -60,7 +60,7 @@ Using an 8x8x320x320 uniform state grid. Surprisingly, this mesh had the best co
 
 ![](assets/acrobot/nongeom_1.gif)
 
-Using a 40x40x40x40 geometric state grid. Similar to the pendulum, the controller seems to  require far more ``pumping'' than is necessary before making an attempt to drive the acrobot to the upright.
+Using a 40x40x40x40 geometric state grid. Similar to the pendulum, the controller seems to  require far more "pumping" than is necessary before making an attempt to drive the acrobot to the upright.
 
 ![](assets/acrobot/geom_0.gif)
 
