@@ -4,3 +4,4 @@ venv
 outputs
 gym
 *.pickle
+*.DS_Store
